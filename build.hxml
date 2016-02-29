@@ -1,0 +1,11 @@
+-debug
+
+-lib tink_macro
+-lib json-rpc
+
+-cp src
+-cp test/src
+
+-main Tests
+
+-js /tmp/tests.js
