@@ -1,8 +1,10 @@
 package t9.anymethodanywhere;
 
 import haxe.remoting.JsonRpc;
+import t9.anymethodanywhere.RemoteMethodDefinition;
 
 import Type in StdType;
+
 
 #if macro
 import haxe.macro.Expr;
@@ -17,23 +19,7 @@ import haxe.macro.Printer;
 
 using StringTools;
 using haxe.macro.Tools;
-// using tink.macro.tools.MacroTools;
-// using tink.core.types.Outcome;
-// using tink.macro.tools.ExprTools;
-// using tink.macro.tools.TypeTools;
-
-/**
- * This contains more than just the parameters of
- * a method signature. It contains the order of
- * the parameters, and documentation
- */
-typedef RemoteMethodParamsBundle = {
-
-}
-
-typedef JsonRpcMethod = {>RequestDefTyped<Dynamic>,
-
-}
+using Lambda;
 
 class Macros
 {
@@ -48,18 +34,16 @@ class Macros
 	{
 		var pos = Context.currentPos();
 
-
-
 		var className = getClassNameFromClassExpr(classes[0]);
 		if (className == null || className == "") {
 			throw className + " not found. Maybe specify the entire class identifier?";
 		}
 
-		trace('className=${className}');
-
 		var proxyClassName = (className.lastIndexOf('.') > -1 ? className.substr(className.lastIndexOf('.') + 1) : className ) + "Proxy" + (Std.int(Math.random() * 100000));
 
 		var metaKey = 'rpc';
+
+		var remoteDefinitions :Array<RemoteMethodDefinition> = [];
 
 		var rpcType = Context.getType(className);
 		var newFields = [];
@@ -67,118 +51,109 @@ class Macros
 			case TInst(t, params):
 				var fields = t.get().fields.get();
 				for (field in fields) {
-					// trace('field.name=${field.name}');
 					if (field.meta.has(metaKey)) {
-						// var promiseType;
+						var definition :RemoteMethodDefinition = {'method':field.name, args:[], aliases:[]};
+						remoteDefinitions.push(definition);
 						var functionArgs;
 						switch(TypeTools.follow(field.type)) {
-							//args: Array<{ name : String, opt : Bool, t : Type }>
 							case TFun(args, ret):
-								trace('args=${args}');
-								trace('ret=${ret}');
-								//This is the type of the Promise return
-								// if (ret.getParameters()[0] + '' != 'promhx.Promise') {
-								// 	throw '@$metaKey method must return a promhx.Promise object';
-								// }
-								// promiseType = ret.getParameters()[1][0];
+								for (arg in args) {
+									var argumentTypeString = TypeTools.toString(arg.t);
+									if (argumentTypeString.startsWith('Null')) {
+										argumentTypeString = argumentTypeString.substring(5, argumentTypeString.length - 1);
+									}
+									var typeEnum :CLIType = cast argumentTypeString;
+									// var type = switch(typeEnum) {
+ 								// 		case Int: CLIType.Int;
+									// 	case String: CLIType.String;
+									// 	default: CLIType.Unknown;
+									// }
+									var methodArgument :CLIArgument = {name :arg.name, optional:arg.opt, type:argumentTypeString, doc:null};//
+									definition.args.push(methodArgument);
+								}
+
+								var metaRpc = field.meta.extract(metaKey).find(function(x) return x.name == metaKey);
+								if (metaRpc.params != null) {
+									for (param in metaRpc.params) {
+										switch(param.expr) {
+											case EObjectDecl(expr):
+												for (metaObjectField in expr) {
+													if (metaObjectField.field == 'aliases') {
+														switch(metaObjectField.expr.expr) {
+															case EArrayDecl(arrayDeclaration):
+																for (arrayItemExpr in arrayDeclaration) {
+																	switch(arrayItemExpr.expr) {
+																		case EConst(CString(s)):definition.aliases.push(s);
+																		default: Context.error('$className.${field.name}: rpc metadata ' + "'aliases' elements must be Strings", pos);
+																	}
+																}
+															default: Context.error('$className.${field.name}: rpc metadata ' + "'aliases' field must be an array.", pos);
+														}
+													} else if (metaObjectField.field == 'argumentDocs') {
+														switch(metaObjectField.expr.expr) {
+															case EObjectDecl(objectDeclaration):
+																for (objectItemExpr in objectDeclaration) {
+																	switch(objectItemExpr.expr.expr) {
+																		case EConst(CString(s)):
+																			var docKey = objectItemExpr.field.substr("@$__hx__".length);
+																			var arg :CLIArgument = definition.args.find(function(v) return v.name == docKey);
+																			if (arg == null) {
+																				Context.error('$className.${field.name}: rpc metadata ' + "'docs' values: there is no matching method argument '" + docKey + "'", pos);
+																			}
+																			arg.doc = s;
+																		default: Context.error('$className.${field.name}: rpc metadata ' + "'docs' values must be Strings", pos);
+																	}
+																}
+															default: Context.error('$className.${field.name}: rpc metadata ' + "'docs' field must be an Object.", pos);
+														}
+													} else if (metaObjectField.field == 'methodDoc') {
+														switch(metaObjectField.expr.expr) {
+															case EConst(CString(s)):
+																definition.doc = s;
+															default: Context.error('$className.${field.name}: rpc metadata ' + "'doc' field must be an String.", pos);
+														}
+													} else if (metaObjectField.field == 'short') {
+														switch(metaObjectField.expr.expr) {
+															case EObjectDecl(objectDeclaration):
+																for (objectItemExpr in objectDeclaration) {
+																	switch(objectItemExpr.expr.expr) {
+																		case EConst(CString(s)):
+																			var argKey = objectItemExpr.field.substr("@$__hx__".length);
+																			var arg :CLIArgument = definition.args.find(function(v) return v.name == argKey);
+																			if (arg == null) {
+																				Context.error('$className.${field.name}: rpc metadata ' + "'short' values: there is no matching method argument '" + argKey + "'", pos);
+																			}
+																			if (s.length != 1) {
+																				Context.error('$className.${field.name}: rpc metadata ' + "'short' values must be a string of length=1, '" + s + "'.length=" + s.length, pos);
+																			}
+																			arg.short = s;
+																		default: Context.error('$className.${field.name}: rpc metadata ' + "'docs' values must be Strings", pos);
+																	}
+																}
+															default: Context.error('$className.${field.name}: rpc metadata ' + "'docs' field must be an Object.", pos);
+														}
+													} else {
+														Context.error("Unrecognized field ('" + metaObjectField.field + " ') in rpc metadata. Allows fields=['aliases', 'docs']", pos);
+													}
+												}
+											default:
+												Context.error("The rpc metadata must be an object formatted e.g. {'alias':['alias1', 'alias2'], 'docs':{'argumentName1':'argumentDocString1', 'argumentName2':'argumentDocString2'}}. All fields are optional", pos);
+										}
+									}
+								}
 								functionArgs = args;
 							default: throw '"@$metaKey" metadata on a variable ${field.name}, only allowed on methods.';
 						}
 
-						// if (functionArgs.length > 1) {
-						// 	throw 'Current we only support passing in the entire params object';
-						// }
 						switch(field.kind) {
 							case FMethod(k):
 							default: throw '"@$metaKey" metadata on a variable ${field.name}, only allowed on methods.';
 						}
-						// newFields.push(
-						// 	{
-						// 		name: field.name,
-						// 		doc: null,
-						// 		meta: [],
-						// 		access: [APublic],
-						// 		kind: FFun({
-						// 			args: functionArgs.map(
-						// 					function(arg) {//{ name : String, opt : Bool, t : Type }
-						// 						var funcArg :FunctionArg = {
-						// 							name: arg.name,
-						// 							type: TypeTools.toComplexType(arg.t)
-						// 						};
-						// 						return funcArg;
-						// 					}),
-						// 			ret: ComplexType.TPath(
-						// 				{
-						// 					name:'Promise',
-						// 					pack:['promhx'],
-						// 					params:
-						// 						[
-						// 							TPType(TypeTools.toComplexType(promiseType))
-						// 						]
-						// 				}),
-						// 			expr : functionArgs.length > 0 ?
-						// 						macro {
-						// 							if (_addToAllParams.length > 0) {
-						// 								for(pair in _addToAllParams) {
-						// 									Reflect.setField($i{functionArgs[0].name}, pair.key, pair.val);
-						// 								}
-						// 							}
-						// 							return cast _conn.request($v{className} + '.' + $v{field.name}, $i{functionArgs[0].name});
-						// 						}
-						// 					:
-						// 						macro {
-						// 							var args;
-						// 							if (_addToAllParams.length > 0) {
-						// 								args = {};
-						// 								for(pair in _addToAllParams) {
-						// 									Reflect.setField(args, pair.key, pair.val);
-						// 								}
-						// 							}
-						// 							return cast _conn.request($v{className} + '.' + $v{field.name}, args);
-						// 						}
-						// 		}),
-						// 		pos: pos
-						// 	}
-						// );
 					}
 				}
 			default:
 		}
-
-		// var c = macro class $proxyClassName
-		// {
-		// 	// var _conn :t9.remoting.jsonrpc.JsonRpcConnection;
-		// 	var _addToAllParams :Array<{key:String, val :Dynamic}>;
-
-		// 	public function new()
-		// 	{
-		// 		_addToAllParams = [];
-		// 	}
-
-		// 	// public function setConnection(conn :t9.remoting.jsonrpc.JsonRpcConnection)
-		// 	// {
-		// 	// 	_conn = conn;
-		// 	// 	return this;
-		// 	// }
-
-		// 	public function addToAllParams(key :String, val :Dynamic)
-		// 	{
-		// 		for (pair in _addToAllParams) {
-		// 			if (pair.key == key) {
-		// 				pair.val = val;
-		// 				return;
-		// 			}
-		// 		}
-		// 		_addToAllParams.push({key:key, val:val});
-		// 	}
-		// }
-		// c.fields = c.fields.concat(newFields);
-
-		// haxe.macro.Context.defineType(c);
-		// var type = TypeTools.toComplexType(Context.getType(proxyClassName));
-		// var typePath :TypePath = {name:proxyClassName, pack:[], params:null, sub:null};
-		// return macro new $typePath ();
-		return macro 1;
+		return macro $v {remoteDefinitions};
 	}
 
 #if macro

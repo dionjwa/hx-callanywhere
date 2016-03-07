@@ -1,0 +1,25 @@
+{
+  "name": "cli-jsonrpc",
+  "version": "1.0.0",
+  "description": "1) a macro to enumerate class methods and signatures 2) convert the signature to json (or any defined transport mechanism) 3) object that maps the json to the method, returning the result 4) bind to a remoting interface",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dionjwa/hx-callanywhere.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dionjwa/hx-callanywhere/issues"
+  },
+  "homepage": "https://github.com/dionjwa/hx-callanywhere",
+  "dependencies": {
+    "commander": "^2.9.0"
+  }
+}

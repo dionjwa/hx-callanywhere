@@ -2,10 +2,22 @@
 
 -lib tink_macro
 -lib json-rpc
+-lib promhx
+-lib hxnodejs
 
 -cp src
 -cp test/src
 
 -main Tests
 
--js /tmp/tests.js
+-js build/tests.js
+
+-cmd echo '#!/usr/bin/env node' | cat - build/tests.js > temp && mv temp build/tests.js
+
+--next
+
+-cmd chmod 755 build/tests.js
+
+--next
+
+-cmd build/tests.js foo 1 arg2
